@@ -1,0 +1,68 @@
+name: Build and Push Container Images
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual trigger
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: 703758695872.dkr.ecr.us-east-1.amazonaws.com
+  BACKEND_REPOSITORY: cost-optimization-backend
+  FRONTEND_REPOSITORY: cost-optimization-frontend
+  DATABASE_REPOSITORY: cost-optimization-database
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Build and push backend image
+      run: |
+        cd backend
+        docker build -t $ECR_REGISTRY/$BACKEND_REPOSITORY:$GITHUB_SHA .
+        docker tag $ECR_REGISTRY/$BACKEND_REPOSITORY:$GITHUB_SHA $ECR_REGISTRY/$BACKEND_REPOSITORY:latest
+        docker push $ECR_REGISTRY/$BACKEND_REPOSITORY:$GITHUB_SHA
+        docker push $ECR_REGISTRY/$BACKEND_REPOSITORY:latest
+        echo "Backend image pushed successfully"
+
+    - name: Build and push frontend image
+      run: |
+        cd frontend/cost-dashboard
+        docker build -t $ECR_REGISTRY/$FRONTEND_REPOSITORY:$GITHUB_SHA .
+        docker tag $ECR_REGISTRY/$FRONTEND_REPOSITORY:$GITHUB_SHA $ECR_REGISTRY/$FRONTEND_REPOSITORY:latest
+        docker push $ECR_REGISTRY/$FRONTEND_REPOSITORY:$GITHUB_SHA
+        docker push $ECR_REGISTRY/$FRONTEND_REPOSITORY:latest
+        echo "Frontend image pushed successfully"
+
+    - name: Build and push database image
+      run: |
+        cd database
+        docker build -t $ECR_REGISTRY/$DATABASE_REPOSITORY:$GITHUB_SHA .
+        docker tag $ECR_REGISTRY/$DATABASE_REPOSITORY:$GITHUB_SHA $ECR_REGISTRY/$DATABASE_REPOSITORY:latest
+        docker push $ECR_REGISTRY/$DATABASE_REPOSITORY:$GITHUB_SHA
+        docker push $ECR_REGISTRY/$DATABASE_REPOSITORY:latest
+        echo "Database image pushed successfully"
+
+    - name: Output image URIs
+      run: |
+        echo "✅ All images built and pushed successfully!"
+        echo "Backend: $ECR_REGISTRY/$BACKEND_REPOSITORY:latest"
+        echo "Frontend: $ECR_REGISTRY/$FRONTEND_REPOSITORY:latest"
+        echo "Database: $ECR_REGISTRY/$DATABASE_REPOSITORY:latest"

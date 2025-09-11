@@ -1,0 +1,8 @@
+# Namespace for cost optimization platform
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cost-optimization
+  labels:
+    name: cost-optimization
+    environment: production

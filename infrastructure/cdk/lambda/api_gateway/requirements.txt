@@ -1,0 +1,2 @@
+# API Gateway Lambda Function Dependencies
+# No external dependencies required for this function

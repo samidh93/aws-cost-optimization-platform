@@ -1,0 +1,54 @@
+{
+  "name": "aws-cost-optimization-platform",
+  "version": "1.0.0",
+  "description": "Multi-Cloud Cost Optimization Platform using AWS latest technologies",
+  "main": "index.js",
+  "scripts": {
+    "setup": "./scripts/setup.sh",
+    "deploy": "./scripts/deploy.sh",
+    "cleanup": "./scripts/cleanup.sh",
+    "test": "pytest tests/",
+    "lint": "black backend/ && flake8 backend/",
+    "cdk:deploy": "cd infrastructure/cdk && cdk deploy --all",
+    "cdk:destroy": "cd infrastructure/cdk && cdk destroy --all",
+    "terraform:plan": "cd infrastructure/terraform && terraform plan",
+    "terraform:apply": "cd infrastructure/terraform && terraform apply",
+    "terraform:destroy": "cd infrastructure/terraform && terraform destroy",
+    "k8s:deploy": "kubectl apply -f kubernetes/",
+    "k8s:delete": "kubectl delete -f kubernetes/",
+    "ansible:playbook": "ansible-playbook -i infrastructure/ansible/inventory infrastructure/ansible/site.yml"
+  },
+  "keywords": [
+    "aws",
+    "kubernetes",
+    "cdk",
+    "terraform",
+    "ansible",
+    "cost-optimization",
+    "python",
+    "infrastructure-as-code"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "aws-cdk": "^2.100.0",
+    "aws-cdk-lib": "^2.100.0",
+    "constructs": "^10.3.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "aws-sdk": "^2.1500.0",
+    "boto3": "^1.34.0",
+    "fastapi": "^0.104.0",
+    "uvicorn": "^0.24.0",
+    "pydantic": "^2.5.0",
+    "sqlalchemy": "^2.0.0",
+    "alembic": "^1.13.0",
+    "pytest": "^7.4.0",
+    "pytest-asyncio": "^0.21.0",
+    "black": "^23.0.0",
+    "flake8": "^6.0.0",
+    "mypy": "^1.7.0"
+  }
+}

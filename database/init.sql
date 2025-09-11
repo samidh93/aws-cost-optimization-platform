@@ -1,0 +1,78 @@
+-- PostgreSQL initialization script for cost optimization database
+-- This script sets up the database schema and initial data
+
+-- Create database if it doesn't exist (handled by POSTGRES_DB env var)
+-- CREATE DATABASE cost_optimization;
+
+-- Connect to the database
+\c cost_optimization;
+
+-- Create extensions
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Create cost_data table
+CREATE TABLE IF NOT EXISTS cost_data (
+    id SERIAL PRIMARY KEY,
+    account_id VARCHAR(50) NOT NULL,
+    timestamp TIMESTAMP NOT NULL,
+    service VARCHAR(100) NOT NULL,
+    cost DECIMAL(10,2) NOT NULL,
+    currency VARCHAR(3) DEFAULT 'USD',
+    region VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create budget_alerts table
+CREATE TABLE IF NOT EXISTS budget_alerts (
+    id SERIAL PRIMARY KEY,
+    account_id VARCHAR(50) NOT NULL,
+    timestamp TIMESTAMP NOT NULL,
+    alert_type VARCHAR(50) NOT NULL,
+    service VARCHAR(100),
+    current_cost DECIMAL(10,2) NOT NULL,
+    budget_limit DECIMAL(10,2) NOT NULL,
+    message TEXT NOT NULL,
+    processed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create optimization_recommendations table
+CREATE TABLE IF NOT EXISTS optimization_recommendations (
+    id SERIAL PRIMARY KEY,
+    account_id VARCHAR(50) NOT NULL,
+    timestamp TIMESTAMP NOT NULL,
+    recommendation_id VARCHAR(100) NOT NULL,
+    service VARCHAR(100) NOT NULL,
+    priority VARCHAR(20) NOT NULL,
+    category VARCHAR(50) NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    description TEXT NOT NULL,
+    potential_savings DECIMAL(10,2) NOT NULL,
+    action TEXT NOT NULL,
+    impact VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_cost_data_account_timestamp ON cost_data(account_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_cost_data_service ON cost_data(service);
+CREATE INDEX IF NOT EXISTS idx_budget_alerts_account ON budget_alerts(account_id);
+CREATE INDEX IF NOT EXISTS idx_optimization_recommendations_account ON optimization_recommendations(account_id);
+
+-- Insert sample data
+INSERT INTO cost_data (account_id, timestamp, service, cost, currency, region) VALUES
+('123456789012', '2025-09-01', 'EC2', 45.50, 'USD', 'us-east-1'),
+('123456789012', '2025-09-01', 'S3', 12.30, 'USD', 'us-east-1'),
+('123456789012', '2025-09-01', 'RDS', 25.80, 'USD', 'us-east-1'),
+('123456789012', '2025-09-02', 'EC2', 48.20, 'USD', 'us-east-1'),
+('123456789012', '2025-09-02', 'S3', 11.90, 'USD', 'us-east-1'),
+('123456789012', '2025-09-02', 'Lambda', 5.40, 'USD', 'us-east-1');
+
+INSERT INTO budget_alerts (account_id, timestamp, alert_type, service, current_cost, budget_limit, message) VALUES
+('123456789012', '2025-09-10', 'WARNING', 'EC2', 450.00, 500.00, 'EC2 costs approaching budget limit'),
+('123456789012', '2025-09-10', 'CRITICAL', 'S3', 180.00, 200.00, 'S3 costs exceeded budget limit');
+
+INSERT INTO optimization_recommendations (account_id, timestamp, recommendation_id, service, priority, category, title, description, potential_savings, action, impact) VALUES
+('123456789012', '2025-09-10', 'opt-001', 'EC2', 'HIGH', 'Compute', 'Right-size EC2 instances', 'Consider switching to smaller instance types for non-production workloads', 120.00, 'Review and resize EC2 instances', 'Medium'),
+('123456789012', '2025-09-10', 'opt-002', 'S3', 'MEDIUM', 'Storage', 'Enable S3 Intelligent Tiering', 'Move infrequently accessed data to cheaper storage classes', 45.00, 'Configure S3 Intelligent Tiering', 'Low'),
+('123456789012', '2025-09-10', 'opt-003', 'RDS', 'HIGH', 'Database', 'Reserve RDS instances', 'Purchase reserved instances for predictable workloads', 200.00, 'Buy 1-year reserved instances', 'High');
