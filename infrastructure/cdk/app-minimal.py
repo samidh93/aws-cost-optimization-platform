@@ -131,11 +131,27 @@ class CostOptimizationMinimalStack(Stack):
             }
         )
         
+        # Cost optimizer (simplified)
+        functions['cost_optimizer'] = lambda_.Function(
+            self, "CostOptimizer",
+            runtime=lambda_.Runtime.PYTHON_3_9,
+            handler="cost_optimizer.handler",
+            code=lambda_.Code.from_asset("lambda/cost_optimizer"),
+            timeout=Duration.minutes(2),  # Shorter timeout
+            memory_size=128,  # Minimum memory
+            environment={
+                "COST_TABLE_NAME": "cost-tracking-minimal",
+                "S3_BUCKET": f"cost-optimization-minimal-{self.account}"
+            }
+        )
+        
         # Grant permissions
         self.dynamodb_table.grant_read_write_data(functions['cost_processor'])
         self.dynamodb_table.grant_read_write_data(functions['budget_alert'])
+        self.dynamodb_table.grant_read_write_data(functions['cost_optimizer'])
         
         self.s3_bucket.grant_read_write(functions['cost_processor'])
+        self.s3_bucket.grant_read_write(functions['cost_optimizer'])
         
         return functions
     

@@ -5,8 +5,8 @@
 
 import axios from 'axios';
 
-// API base URL - points to our FastAPI backend (local for now)
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+// API base URL - points to our deployed AWS API Gateway
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://o4jbkndjo2.execute-api.us-east-1.amazonaws.com/prod';
 
 // Create axios instance with default config
 const api = axios.create({
