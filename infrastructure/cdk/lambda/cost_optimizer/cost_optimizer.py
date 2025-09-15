@@ -267,7 +267,14 @@ def generate_general_recommendations(cost_data: Dict[str, Any]) -> List[Dict[str
     # Calculate total cost
     total_cost = 0
     for result in cost_data.get('ResultsByTime', []):
-        total_cost += float(result['Total']['BlendedCost']['Amount'])
+        # Handle both actual API response and mock data
+        if 'Total' in result and 'BlendedCost' in result['Total']:
+            total_cost += float(result['Total']['BlendedCost']['Amount'])
+        else:
+            # Calculate from groups if Total is not available
+            for group in result.get('Groups', []):
+                if 'BlendedCost' in group['Metrics']:
+                    total_cost += float(group['Metrics']['BlendedCost']['Amount'])
     
     if total_cost > 50:  # If total costs are high
         recommendations.append({

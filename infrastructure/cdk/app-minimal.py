@@ -153,6 +153,22 @@ class CostOptimizationMinimalStack(Stack):
         self.s3_bucket.grant_read_write(functions['cost_processor'])
         self.s3_bucket.grant_read_write(functions['cost_optimizer'])
         
+        # Add Cost Explorer permissions for cost optimizer
+        functions['cost_optimizer'].add_to_role_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "ce:GetCostAndUsage",
+                    "ce:GetDimensionValues",
+                    "ce:GetReservationCoverage",
+                    "ce:GetReservationPurchaseRecommendation",
+                    "ce:GetReservationUtilization",
+                    "ce:GetUsageReport"
+                ],
+                resources=["*"]
+            )
+        )
+        
         return functions
     
     def _create_api_gateway_lambda(self) -> lambda_.Function:

@@ -15,7 +15,8 @@ from aws_cdk import (
     aws_route53 as route53,
     aws_certificatemanager as acm,
     Duration,
-    CfnOutput
+    CfnOutput,
+    CfnJson
 )
 from constructs import Construct
 
@@ -35,8 +36,8 @@ class CostOptimizationEKSStack(Stack):
         # Create EKS cluster
         self.eks_cluster = self._create_eks_cluster()
         
-        # Create IAM roles for service accounts
-        self._create_iam_roles()
+        # Create IAM roles for service accounts (simplified for now)
+        # self._create_iam_roles()
         
         # Output important values
         self._create_outputs()
@@ -63,46 +64,23 @@ class CostOptimizationEKSStack(Stack):
         )
 
     def _create_ecr_repositories(self) -> dict:
-        """Create ECR repositories for container images"""
+        """Reference existing ECR repositories for container images"""
         repos = {}
         
-        # Backend repository
-        repos['backend'] = ecr.Repository(
+        # Reference existing repositories instead of creating new ones
+        repos['backend'] = ecr.Repository.from_repository_name(
             self, "BackendRepository",
-            repository_name="cost-optimization-backend",
-            image_scan_on_push=True,
-            lifecycle_rules=[
-                ecr.LifecycleRule(
-                    max_image_count=10,
-                    rule_priority=1
-                )
-            ]
+            repository_name="cost-optimization-backend"
         )
         
-        # Frontend repository
-        repos['frontend'] = ecr.Repository(
-            self, "FrontendRepository",
-            repository_name="cost-optimization-frontend",
-            image_scan_on_push=True,
-            lifecycle_rules=[
-                ecr.LifecycleRule(
-                    max_image_count=10,
-                    rule_priority=1
-                )
-            ]
+        repos['frontend'] = ecr.Repository.from_repository_name(
+            self, "FrontendRepository", 
+            repository_name="cost-optimization-frontend"
         )
         
-        # Database repository
-        repos['database'] = ecr.Repository(
+        repos['database'] = ecr.Repository.from_repository_name(
             self, "DatabaseRepository",
-            repository_name="cost-optimization-database",
-            image_scan_on_push=True,
-            lifecycle_rules=[
-                ecr.LifecycleRule(
-                    max_image_count=5,
-                    rule_priority=1
-                )
-            ]
+            repository_name="cost-optimization-database"
         )
         
         return repos
@@ -126,7 +104,7 @@ class CostOptimizationEKSStack(Stack):
         cluster = eks.Cluster(
             self, "CostOptimizationCluster",
             cluster_name="cost-optimization-cluster",
-            version=eks.KubernetesVersion.V1_25,
+            version=eks.KubernetesVersion.V1_19,
             vpc=self.vpc,
             vpc_subnets=[ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS)],
             masters_role=cluster_admin_role,
@@ -177,20 +155,22 @@ class CostOptimizationEKSStack(Stack):
     def _create_iam_roles(self):
         """Create IAM roles for service accounts"""
         
+        # Create CfnJson for dynamic string resolution
+        oidc_issuer = self.eks_cluster.open_id_connect_provider.open_id_connect_provider_issuer
+        oidc_condition = CfnJson(
+            self, "OIDCCondition",
+            value={
+                f"{oidc_issuer}:sub": "system:serviceaccount:kube-system:aws-load-balancer-controller",
+                f"{oidc_issuer}:aud": "sts.amazonaws.com"
+            }
+        )
+        
         # AWS Load Balancer Controller role
         alb_controller_role = iam.Role(
             self, "AWSLoadBalancerControllerRole",
             assumed_by=iam.FederatedPrincipal(
-                f"arn:aws:iam::{self.account}:oidc-provider/"
-                f"{self.eks_cluster.open_id_connect_provider.open_id_connect_provider_issuer}",
-                {
-                    "StringEquals": {
-                        f"{self.eks_cluster.open_id_connect_provider.open_id_connect_provider_issuer}:sub": 
-                        "system:serviceaccount:kube-system:aws-load-balancer-controller",
-                        f"{self.eks_cluster.open_id_connect_provider.open_id_connect_provider_issuer}:aud": 
-                        "sts.amazonaws.com"
-                    }
-                },
+                f"arn:aws:iam::{self.account}:oidc-provider/{oidc_issuer}",
+                oidc_condition.value,
                 "sts:AssumeRoleWithWebIdentity"
             ),
             managed_policies=[
@@ -198,20 +178,21 @@ class CostOptimizationEKSStack(Stack):
             ]
         )
         
+        # Backend service role condition
+        backend_condition = CfnJson(
+            self, "BackendOIDCCondition",
+            value={
+                f"{oidc_issuer}:sub": "system:serviceaccount:default:backend-service-account",
+                f"{oidc_issuer}:aud": "sts.amazonaws.com"
+            }
+        )
+        
         # Backend service role
         backend_role = iam.Role(
             self, "BackendServiceRole",
             assumed_by=iam.FederatedPrincipal(
-                f"arn:aws:iam::{self.account}:oidc-provider/"
-                f"{self.eks_cluster.open_id_connect_provider.open_id_connect_provider_issuer}",
-                {
-                    "StringEquals": {
-                        f"{self.eks_cluster.open_id_connect_provider.open_id_connect_provider_issuer}:sub": 
-                        "system:serviceaccount:default:backend-service-account",
-                        f"{self.eks_cluster.open_id_connect_provider.open_id_connect_provider_issuer}:aud": 
-                        "sts.amazonaws.com"
-                    }
-                },
+                f"arn:aws:iam::{self.account}:oidc-provider/{oidc_issuer}",
+                backend_condition.value,
                 "sts:AssumeRoleWithWebIdentity"
             ),
             managed_policies=[
