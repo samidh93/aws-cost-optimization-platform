@@ -66,3 +66,4 @@ jobs:
         echo "Backend: $ECR_REGISTRY/$BACKEND_REPOSITORY:latest"
         echo "Frontend: $ECR_REGISTRY/$FRONTEND_REPOSITORY:latest"
         echo "Database: $ECR_REGISTRY/$DATABASE_REPOSITORY:latest"
+# Trigger workflow with fixed AWS credentials
