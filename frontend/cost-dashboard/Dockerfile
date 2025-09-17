@@ -13,6 +13,10 @@ RUN npm ci --only=production
 # Copy source code
 COPY . .
 
+# Set build-time environment variable
+ARG REACT_APP_API_URL=http://a2553eaec504b41de89d19e1cdb90364-1782819892.us-east-1.elb.amazonaws.com:8000
+ENV REACT_APP_API_URL=$REACT_APP_API_URL
+
 # Build the application
 RUN npm run build
 
