@@ -7,7 +7,7 @@ metadata:
   labels:
     app: backend-api
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: backend-api
@@ -16,10 +16,12 @@ spec:
       labels:
         app: backend-api
     spec:
+      nodeSelector:
+        kubernetes.io/hostname: ip-10-0-2-139.ec2.internal
       serviceAccountName: backend-service-account
       containers:
       - name: backend
-        image: YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/cost-optimization-backend:latest
+        image: 703758695872.dkr.ecr.us-east-1.amazonaws.com/cost-optimization-backend:latest
         ports:
         - containerPort: 8000
         env:
@@ -45,11 +47,11 @@ spec:
               key: LOG_LEVEL
         resources:
           requests:
-            memory: "256Mi"
-            cpu: "250m"
+            memory: "64Mi"
+            cpu: "50m"
           limits:
-            memory: "512Mi"
-            cpu: "500m"
+            memory: "128Mi"
+            cpu: "100m"
         livenessProbe:
           httpGet:
             path: /health
@@ -87,4 +89,4 @@ metadata:
   name: backend-service-account
   namespace: cost-optimization
   annotations:
-    eks.amazonaws.com/role-arn: "arn:aws:iam::YOUR_ACCOUNT_ID:role/CostOptimizationEKS-BackendServiceRole"
+    eks.amazonaws.com/role-arn: "arn:aws:iam::703758695872:role/CostOptimizationEKS-BackendServiceRole"

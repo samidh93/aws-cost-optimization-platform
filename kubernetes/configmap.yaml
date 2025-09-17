@@ -17,7 +17,7 @@ data:
   AWS_DEFAULT_REGION: "us-east-1"
   
   # Application configuration
-  ENVIRONMENT: "production"
+  ENVIRONMENT: "development"
   LOG_LEVEL: "INFO"
   
   # API configuration
@@ -25,4 +25,4 @@ data:
   API_PORT: "8000"
   
   # Frontend configuration
-  REACT_APP_API_URL: "http://backend-service:8000"
+  REACT_APP_API_URL: "http://a2553eaec504b41de89d19e1cdb90364-1782819892.us-east-1.elb.amazonaws.com:8000"

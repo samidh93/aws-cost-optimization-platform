@@ -18,6 +18,7 @@ from aws_cdk import (
     CfnOutput,
     CfnJson
 )
+from aws_cdk.lambda_layer_kubectl_v28 import KubectlV28Layer
 from constructs import Construct
 
 
@@ -104,7 +105,8 @@ class CostOptimizationEKSStack(Stack):
         cluster = eks.Cluster(
             self, "CostOptimizationCluster",
             cluster_name="cost-optimization-cluster",
-            version=eks.KubernetesVersion.V1_19,
+            version=eks.KubernetesVersion.V1_28,
+            kubectl_layer=KubectlV28Layer(self, "KubectlV28Layer"),
             vpc=self.vpc,
             vpc_subnets=[ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS)],
             masters_role=cluster_admin_role,
