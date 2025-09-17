@@ -25,4 +25,4 @@ data:
   API_PORT: "8000"
   
   # Frontend configuration
-  REACT_APP_API_URL: "http://a2553eaec504b41de89d19e1cdb90364-1782819892.us-east-1.elb.amazonaws.com:8000"
+  REACT_APP_API_URL: "http://af89e874f1f2d4d12a38c21f321b6ff0-90331772.us-east-1.elb.amazonaws.com:8000"
