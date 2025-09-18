@@ -76,7 +76,7 @@ export interface OptimizationRecommendation {
   category: string;
   title: string;
   description: string;
-  potential_savings: string;
+  potential_savings: string | number;
   action: string;
   impact: string;
   created_at: string;
@@ -121,7 +121,13 @@ class ApiService {
 
   async getCostTrends(days: number = 30): Promise<CostTrends> {
     const response = await api.get(`/api/v1/cost/trends?days=${days}`);
-    return response.data.trends;
+    // Transform API response to match CostTrends interface
+    return {
+      daily_costs: response.data.trends || [],
+      trend_direction: 'stable',
+      trend_percentage: 0,
+      period_days: response.data.period_days || days
+    };
   }
 
   async getServicesBreakdown(days: number = 30): Promise<Array<{
