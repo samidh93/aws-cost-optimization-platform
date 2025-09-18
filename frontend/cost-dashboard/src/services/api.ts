@@ -12,9 +12,8 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://o4jbkndjo2.execut
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  // Remove Content-Type header to avoid CORS preflight requests
+  // API Gateway will handle JSON responses automatically
 });
 
 // Types for our API responses
@@ -33,8 +32,11 @@ export interface CostSummary {
   total_cost: number;
   daily_average: number;
   period_days: number;
-  trend_percentage: number;
-  service_breakdown: Array<{
+  currency: string;
+  last_updated: string;
+  // Optional fields for enhanced features
+  trend_percentage?: number;
+  service_breakdown?: Array<{
     service: string;
     total_cost: number;
     percentage: number;
@@ -83,9 +85,11 @@ export interface OptimizationRecommendation {
 export interface HealthStatus {
   status: string;
   service: string;
-  version: string;
-  database: string;
-  data_counts: {
+  timestamp: string;
+  // Optional fields for backward compatibility
+  version?: string;
+  database?: string;
+  data_counts?: {
     cost_records: number;
     budget_alerts: number;
     optimization_recommendations: number;
@@ -96,7 +100,7 @@ export interface HealthStatus {
 class ApiService {
   // Health endpoints
   async getHealth(): Promise<HealthStatus> {
-    const response = await api.get('/health/detailed');
+    const response = await api.get('/health');
     return response.data;
   }
 
@@ -112,7 +116,7 @@ class ApiService {
 
   async getCostSummary(days: number = 30): Promise<CostSummary> {
     const response = await api.get(`/api/v1/cost/summary?days=${days}`);
-    return response.data.summary;
+    return response.data;
   }
 
   async getCostTrends(days: number = 30): Promise<CostTrends> {

@@ -108,13 +108,15 @@ const Dashboard: React.FC = () => {
           <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
             <Chip
               icon={<CheckCircle />}
-              label={`${health.status.toUpperCase()} - ${health.database}`}
+              label={`${health.status.toUpperCase()} - ${health.service}`}
               color={health.status === 'healthy' ? 'success' : 'error'}
               variant="outlined"
             />
-            <Typography variant="body2" color="text.secondary">
-              {health.data_counts.cost_records} cost records • {health.data_counts.budget_alerts} alerts • {health.data_counts.optimization_recommendations} recommendations
-            </Typography>
+            {health.data_counts && (
+              <Typography variant="body2" color="text.secondary">
+                {health.data_counts.cost_records} cost records • {health.data_counts.budget_alerts} alerts • {health.data_counts.optimization_recommendations} recommendations
+              </Typography>
+            )}
           </Box>
         )}
       </Box>
@@ -166,11 +168,11 @@ const Dashboard: React.FC = () => {
                     <Typography color="text.secondary" gutterBottom>
                       Cost Trend
                     </Typography>
-                    <Typography variant="h4" component="div" color={getTrendColor(costSummary.trend_percentage)}>
-                      {costSummary.trend_percentage > 0 ? '+' : ''}{costSummary.trend_percentage.toFixed(1)}%
+                    <Typography variant="h4" component="div" color={getTrendColor(costSummary.trend_percentage || 0)}>
+                      {(costSummary.trend_percentage || 0) > 0 ? '+' : ''}{(costSummary.trend_percentage || 0).toFixed(1)}%
                     </Typography>
                   </Box>
-                  {getTrendIcon(costSummary.trend_percentage)}
+                  {getTrendIcon(costSummary.trend_percentage || 0)}
                 </Box>
               </CardContent>
             </Card>
