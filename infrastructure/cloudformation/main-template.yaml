@@ -1,0 +1,579 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AWS Cost Optimization Platform - Main Infrastructure Template'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: 'prod'
+    AllowedValues: ['dev', 'staging', 'prod']
+    Description: 'Environment name'
+  
+  ProjectName:
+    Type: String
+    Default: 'cost-optimization'
+    Description: 'Project name for resource naming'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Project Configuration"
+        Parameters:
+          - ProjectName
+          - Environment
+
+Resources:
+  # ==========================================
+  # VPC Infrastructure (Free)
+  # ==========================================
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: '10.0.0.0/16'
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-vpc-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Internet Gateway
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-igw-${Environment}'
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  # Public Subnets (2 AZs)
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: '10.0.1.0/24'
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-public-subnet-1-${Environment}'
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: '10.0.2.0/24'
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-public-subnet-2-${Environment}'
+
+  # Route Table for Public Subnets
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-public-routes-${Environment}'
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+
+  # ==========================================
+  # S3 Bucket for Cost Data Storage (5GB Free)
+  # ==========================================
+  CostDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-data-${AWS::AccountId}-${Environment}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 7
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-cost-data-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ==========================================
+  # DynamoDB Table for Cost Tracking (25GB Free)
+  # ==========================================
+  CostTrackingTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${ProjectName}-cost-tracking-${Environment}'
+      AttributeDefinitions:
+        - AttributeName: account_id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: account_id
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: false  # Disabled to save costs
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-cost-tracking-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ==========================================
+  # IAM Roles for Lambda Functions
+  # ==========================================
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-lambda-execution-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource: !GetAtt CostTrackingTable.Arn
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource: !Sub '${CostDataBucket}/*'
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: !Ref CostDataBucket
+        - PolicyName: CostExplorerAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ce:GetCostAndUsage
+                  - ce:GetDimensionValues
+                  - ce:GetReservationCoverage
+                  - ce:GetReservationPurchaseRecommendation
+                  - ce:GetReservationUtilization
+                  - ce:GetUsageReport
+                Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-lambda-role-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ==========================================
+  # Lambda Functions (1M Requests Free)
+  # ==========================================
+  CostProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-cost-processor-${Environment}'
+      Runtime: python3.11
+      Handler: cost_processor.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import logging
+          from datetime import datetime, timedelta
+          from decimal import Decimal
+          
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          
+          def lambda_handler(event, context):
+              logger.info(f"Cost processor started with event: {event}")
+              
+              # Placeholder implementation
+              # In production, this would contain the actual cost processing logic
+              
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps({
+                      'message': 'Cost processor executed successfully',
+                      'timestamp': datetime.now().isoformat()
+                  }, default=str)
+              }
+      Environment:
+        Variables:
+          COST_TABLE_NAME: !Ref CostTrackingTable
+          S3_BUCKET: !Ref CostDataBucket
+          ENVIRONMENT: !Ref Environment
+      Timeout: 120
+      MemorySize: 128
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-cost-processor-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  BudgetAlertFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-budget-alert-${Environment}'
+      Runtime: python3.11
+      Handler: budget_alert.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import logging
+          from datetime import datetime
+          
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          
+          def lambda_handler(event, context):
+              logger.info(f"Budget alert started with event: {event}")
+              
+              # Placeholder implementation
+              # In production, this would contain the actual budget alert logic
+              
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps({
+                      'message': 'Budget alert executed successfully',
+                      'timestamp': datetime.now().isoformat()
+                  }, default=str)
+              }
+      Environment:
+        Variables:
+          COST_TABLE_NAME: !Ref CostTrackingTable
+          ENVIRONMENT: !Ref Environment
+      Timeout: 60
+      MemorySize: 128
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-budget-alert-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  CostOptimizerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-cost-optimizer-${Environment}'
+      Runtime: python3.11
+      Handler: cost_optimizer.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import logging
+          from datetime import datetime, timedelta
+          from decimal import Decimal
+          
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          
+          def lambda_handler(event, context):
+              logger.info(f"Cost optimizer started with event: {event}")
+              
+              # Placeholder implementation
+              # In production, this would contain the actual optimization logic
+              
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps({
+                      'message': 'Cost optimizer executed successfully',
+                      'recommendations': [],
+                      'timestamp': datetime.now().isoformat()
+                  }, default=str)
+              }
+      Environment:
+        Variables:
+          COST_TABLE_NAME: !Ref CostTrackingTable
+          S3_BUCKET: !Ref CostDataBucket
+          ENVIRONMENT: !Ref Environment
+      Timeout: 120
+      MemorySize: 128
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-cost-optimizer-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ==========================================
+  # API Gateway Lambda Function
+  # ==========================================
+  ApiGatewayLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-api-gateway-${Environment}'
+      Runtime: python3.11
+      Handler: api_gateway.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import logging
+          from datetime import datetime, timedelta
+          from decimal import Decimal
+          
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          
+          def lambda_handler(event, context):
+              logger.info(f"API Gateway Lambda started with event: {event}")
+              
+              # Add CORS headers
+              headers = {
+                  'Access-Control-Allow-Origin': '*',
+                  'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+                  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
+              }
+              
+              # Handle OPTIONS request for CORS
+              if event.get('httpMethod') == 'OPTIONS':
+                  return {
+                      'statusCode': 200,
+                      'headers': headers,
+                      'body': ''
+                  }
+              
+              # Basic API routing
+              path = event.get('path', '')
+              method = event.get('httpMethod', 'GET')
+              
+              if '/health' in path:
+                  response_body = {
+                      'status': 'healthy',
+                      'service': 'AWS Cost Optimization Platform',
+                      'version': '1.0.0',
+                      'timestamp': datetime.now().isoformat()
+                  }
+              else:
+                  response_body = {
+                      'message': 'API Gateway Lambda function working',
+                      'path': path,
+                      'method': method,
+                      'timestamp': datetime.now().isoformat()
+                  }
+              
+              return {
+                  'statusCode': 200,
+                  'headers': headers,
+                  'body': json.dumps(response_body, default=str)
+              }
+      Environment:
+        Variables:
+          COST_TABLE_NAME: !Ref CostTrackingTable
+          S3_BUCKET: !Ref CostDataBucket
+          ENVIRONMENT: !Ref Environment
+      Timeout: 30
+      MemorySize: 128
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-api-gateway-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ==========================================
+  # API Gateway (1M Requests Free)
+  # ==========================================
+  ApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub '${ProjectName}-api-${Environment}'
+      Description: 'Cost Optimization Platform API'
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-api-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # API Gateway Lambda Permission
+  ApiGatewayLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ApiGatewayLambdaFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*'
+
+  # Proxy Resource (catch-all)
+  ApiGatewayProxyResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: '{proxy+}'
+
+  # Proxy Method
+  ApiGatewayProxyMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayProxyResource
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiGatewayLambdaFunction.Arn}/invocations'
+
+  # OPTIONS Method for CORS
+  ApiGatewayOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayProxyResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiGatewayLambdaFunction.Arn}/invocations'
+
+  # API Gateway Deployment
+  ApiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: 
+      - ApiGatewayProxyMethod
+      - ApiGatewayOptionsMethod
+    Properties:
+      RestApiId: !Ref ApiGateway
+      StageName: !Ref Environment
+
+# ==========================================
+# Outputs
+# ==========================================
+Outputs:
+  VpcId:
+    Description: 'VPC ID'
+    Value: !Ref VPC
+    Export:
+      Name: !Sub '${ProjectName}-vpc-id-${Environment}'
+
+  PublicSubnet1Id:
+    Description: 'Public Subnet 1 ID'
+    Value: !Ref PublicSubnet1
+    Export:
+      Name: !Sub '${ProjectName}-public-subnet-1-${Environment}'
+
+  PublicSubnet2Id:
+    Description: 'Public Subnet 2 ID'
+    Value: !Ref PublicSubnet2
+    Export:
+      Name: !Sub '${ProjectName}-public-subnet-2-${Environment}'
+
+  S3BucketName:
+    Description: 'S3 Bucket for cost data storage'
+    Value: !Ref CostDataBucket
+    Export:
+      Name: !Sub '${ProjectName}-s3-bucket-${Environment}'
+
+  DynamoDBTableName:
+    Description: 'DynamoDB table for cost tracking'
+    Value: !Ref CostTrackingTable
+    Export:
+      Name: !Sub '${ProjectName}-dynamodb-table-${Environment}'
+
+  ApiGatewayUrl:
+    Description: 'API Gateway URL'
+    Value: !Sub 'https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+    Export:
+      Name: !Sub '${ProjectName}-api-url-${Environment}'
+
+  CostProcessorFunctionArn:
+    Description: 'Cost Processor Lambda Function ARN'
+    Value: !GetAtt CostProcessorFunction.Arn
+    Export:
+      Name: !Sub '${ProjectName}-cost-processor-arn-${Environment}'
+
+  BudgetAlertFunctionArn:
+    Description: 'Budget Alert Lambda Function ARN'
+    Value: !GetAtt BudgetAlertFunction.Arn
+    Export:
+      Name: !Sub '${ProjectName}-budget-alert-arn-${Environment}'
+
+  CostOptimizerFunctionArn:
+    Description: 'Cost Optimizer Lambda Function ARN'
+    Value: !GetAtt CostOptimizerFunction.Arn
+    Export:
+      Name: !Sub '${ProjectName}-cost-optimizer-arn-${Environment}'
