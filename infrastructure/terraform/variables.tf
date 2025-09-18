@@ -185,6 +185,25 @@ variable "owner" {
   default     = ""
 }
 
+# Frontend configuration
+variable "enable_frontend_hosting" {
+  description = "Enable S3 static website hosting for frontend"
+  type        = bool
+  default     = true
+}
+
+variable "frontend_index_document" {
+  description = "Index document for frontend S3 website"
+  type        = string
+  default     = "index.html"
+}
+
+variable "frontend_error_document" {
+  description = "Error document for frontend S3 website"
+  type        = string
+  default     = "error.html"
+}
+
 # Feature flags
 variable "enable_api_gateway_caching" {
   description = "Enable API Gateway response caching"

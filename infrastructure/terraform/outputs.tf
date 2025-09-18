@@ -136,6 +136,35 @@ output "lambda_execution_role_arn" {
 }
 
 # ==========================================
+# Frontend Outputs
+# ==========================================
+
+output "frontend_bucket_name" {
+  description = "Name of the S3 bucket hosting the frontend"
+  value       = aws_s3_bucket.frontend.bucket
+}
+
+output "frontend_bucket_arn" {
+  description = "ARN of the frontend S3 bucket"
+  value       = aws_s3_bucket.frontend.arn
+}
+
+output "frontend_website_endpoint" {
+  description = "Website endpoint for the frontend S3 bucket"
+  value       = aws_s3_bucket_website_configuration.frontend.website_endpoint
+}
+
+output "frontend_website_domain" {
+  description = "Website domain for the frontend S3 bucket"
+  value       = aws_s3_bucket_website_configuration.frontend.website_domain
+}
+
+output "frontend_url" {
+  description = "Complete URL to access the frontend"
+  value       = "http://${aws_s3_bucket_website_configuration.frontend.website_endpoint}"
+}
+
+# ==========================================
 # General Information Outputs
 # ==========================================
 
@@ -217,6 +246,7 @@ output "next_steps" {
 output "resource_urls" {
   description = "URLs for testing and management"
   value = {
+    frontend_url    = "http://${aws_s3_bucket_website_configuration.frontend.website_endpoint}"
     api_gateway_url = "https://${aws_api_gateway_rest_api.main.id}.execute-api.${var.aws_region}.amazonaws.com/${var.environment}"
     health_check    = "https://${aws_api_gateway_rest_api.main.id}.execute-api.${var.aws_region}.amazonaws.com/${var.environment}/health"
     aws_console = {
