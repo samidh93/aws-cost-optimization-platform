@@ -1,19 +1,7 @@
 # AWS Cost Optimization Platform - Terraform Configuration
 # This configuration deploys the infrastructure using only AWS free tier resources
 
-terraform {
-  required_version = ">= 1.0"
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-    archive = {
-      source  = "hashicorp/archive"
-      version = "~> 2.0"
-    }
-  }
-}
+# Provider configuration moved to versions.tf
 
 # Configure AWS Provider
 provider "aws" {
@@ -137,6 +125,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "cost_data" {
   rule {
     id     = "delete_old_versions"
     status = "Enabled"
+
+    filter {
+      prefix = ""
+    }
 
     noncurrent_version_expiration {
       noncurrent_days = 7
