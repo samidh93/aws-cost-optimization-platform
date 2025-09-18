@@ -15,7 +15,10 @@
     "cloudformation:deploy": "cd infrastructure/cloudformation && ./deploy.sh deploy",
     "cloudformation:delete": "cd infrastructure/cloudformation && ./deploy.sh delete",
     "frontend:build": "cd frontend/cost-dashboard && npm run build",
-    "frontend:deploy": "cd frontend/cost-dashboard && npm run build && aws s3 sync build/ s3://cost-optimization-frontend-703758695872-prod/ --delete"
+    "frontend:deploy": "cd frontend/cost-dashboard && npm run build && aws s3 sync build/ s3://cost-optimization-frontend-703758695872-prod/ --delete",
+    "deploy:full": "npm run terraform:apply && npm run frontend:deploy",
+    "workflow:trigger": "gh workflow run deploy-infrastructure.yml",
+    "status:check": "curl -s https://o54yhb3r3h.execute-api.us-east-1.amazonaws.com/prod/health | jq ."
   },
   "keywords": [
     "aws",

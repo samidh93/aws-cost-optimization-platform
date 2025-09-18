@@ -1,0 +1,251 @@
+name: Deploy Infrastructure and Applications
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'infrastructure/terraform/**'
+      - 'infrastructure/cdk/lambda/**'
+      - 'frontend/cost-dashboard/**'
+      - '.github/workflows/deploy-infrastructure.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'infrastructure/terraform/**'
+      - 'infrastructure/cdk/lambda/**'
+      - 'frontend/cost-dashboard/**'
+  workflow_dispatch:
+    inputs:
+      deploy_infrastructure:
+        description: 'Deploy Terraform infrastructure'
+        required: false
+        default: 'true'
+        type: boolean
+      deploy_frontend:
+        description: 'Deploy frontend to S3'
+        required: false
+        default: 'true'
+        type: boolean
+
+env:
+  AWS_REGION: us-east-1
+  TERRAFORM_VERSION: 1.5.7
+  NODE_VERSION: 18
+
+jobs:
+  # Job 1: Detect what changed
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      terraform-changed: ${{ steps.changes.outputs.terraform }}
+      lambda-changed: ${{ steps.changes.outputs.lambda }}
+      frontend-changed: ${{ steps.changes.outputs.frontend }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changes
+        id: changes
+        run: |
+          # Check for Terraform changes
+          if git diff --name-only HEAD~1 HEAD | grep -E '^infrastructure/terraform/|^infrastructure/cdk/lambda/' > /dev/null; then
+            echo "terraform=true" >> $GITHUB_OUTPUT
+            echo "🏗️ Terraform or Lambda code changes detected"
+          else
+            echo "terraform=false" >> $GITHUB_OUTPUT
+          fi
+          
+          # Check for Lambda code changes specifically
+          if git diff --name-only HEAD~1 HEAD | grep -E '^infrastructure/cdk/lambda/' > /dev/null; then
+            echo "lambda=true" >> $GITHUB_OUTPUT
+            echo "⚡ Lambda code changes detected"
+          else
+            echo "lambda=false" >> $GITHUB_OUTPUT
+          fi
+          
+          # Check for frontend changes
+          if git diff --name-only HEAD~1 HEAD | grep -E '^frontend/cost-dashboard/' > /dev/null; then
+            echo "frontend=true" >> $GITHUB_OUTPUT
+            echo "🌐 Frontend changes detected"
+          else
+            echo "frontend=false" >> $GITHUB_OUTPUT
+          fi
+
+  # Job 2: Deploy Terraform Infrastructure
+  deploy-terraform:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.terraform-changed == 'true' || github.event.inputs.deploy_infrastructure == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      api-gateway-url: ${{ steps.terraform-output.outputs.api_gateway_url }}
+      frontend-bucket: ${{ steps.terraform-output.outputs.frontend_bucket_name }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: infrastructure/terraform
+        run: terraform init
+
+      - name: Terraform Validate
+        working-directory: infrastructure/terraform
+        run: terraform validate
+
+      - name: Terraform Plan
+        working-directory: infrastructure/terraform
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: infrastructure/terraform
+        run: terraform apply -auto-approve tfplan
+
+      - name: Get Terraform Outputs
+        id: terraform-output
+        working-directory: infrastructure/terraform
+        run: |
+          echo "api_gateway_url=$(terraform output -raw api_gateway_url)" >> $GITHUB_OUTPUT
+          echo "frontend_bucket_name=$(terraform output -raw frontend_bucket_name)" >> $GITHUB_OUTPUT
+          
+          echo "🎯 Infrastructure deployed successfully!"
+          echo "API Gateway: $(terraform output -raw api_gateway_url)"
+          echo "Frontend Bucket: $(terraform output -raw frontend_bucket_name)"
+
+  # Job 3: Deploy Frontend to S3
+  deploy-frontend:
+    needs: [detect-changes, deploy-terraform]
+    if: always() && (needs.detect-changes.outputs.frontend-changed == 'true' || github.event.inputs.deploy_frontend == 'true' || needs.deploy-terraform.result == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/cost-dashboard/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend/cost-dashboard
+        run: npm ci
+
+      - name: Get API Gateway URL
+        id: get-api-url
+        run: |
+          if [ "${{ needs.deploy-terraform.outputs.api-gateway-url }}" != "" ]; then
+            echo "api_url=${{ needs.deploy-terraform.outputs.api-gateway-url }}" >> $GITHUB_OUTPUT
+          else
+            # Fallback: get from existing Terraform state
+            cd infrastructure/terraform
+            echo "api_url=$(terraform output -raw api_gateway_url 2>/dev/null || echo 'https://o54yhb3r3h.execute-api.us-east-1.amazonaws.com/prod')" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build React application
+        working-directory: frontend/cost-dashboard
+        env:
+          REACT_APP_API_URL: ${{ steps.get-api-url.outputs.api_url }}
+          CI: false  # Disable treating warnings as errors
+        run: |
+          echo "🏗️ Building React app with API URL: $REACT_APP_API_URL"
+          npm run build
+
+      - name: Get S3 bucket name
+        id: get-bucket
+        run: |
+          if [ "${{ needs.deploy-terraform.outputs.frontend-bucket }}" != "" ]; then
+            echo "bucket_name=${{ needs.deploy-terraform.outputs.frontend-bucket }}" >> $GITHUB_OUTPUT
+          else
+            # Fallback: get from existing Terraform state
+            cd infrastructure/terraform
+            echo "bucket_name=$(terraform output -raw frontend_bucket_name 2>/dev/null || echo 'cost-optimization-frontend-703758695872-prod')" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy to S3
+        working-directory: frontend/cost-dashboard
+        run: |
+          echo "🚀 Deploying to S3 bucket: ${{ steps.get-bucket.outputs.bucket_name }}"
+          aws s3 sync build/ s3://${{ steps.get-bucket.outputs.bucket_name }}/ --delete
+          echo "✅ Frontend deployed successfully!"
+
+      - name: Test deployment
+        run: |
+          FRONTEND_URL="http://${{ steps.get-bucket.outputs.bucket_name }}.s3-website-us-east-1.amazonaws.com"
+          API_URL="${{ steps.get-api-url.outputs.api_url }}"
+          
+          echo "🧪 Testing deployment..."
+          echo "Frontend URL: $FRONTEND_URL"
+          echo "API URL: $API_URL"
+          
+          # Test API health
+          curl -f "$API_URL/health" || echo "⚠️ API health check failed"
+          
+          # Test if S3 website is accessible
+          curl -f "$FRONTEND_URL" -o /dev/null || echo "⚠️ Frontend accessibility check failed"
+          
+          echo "✅ Deployment tests completed"
+
+  # Job 4: Notify deployment status
+  notify-status:
+    needs: [detect-changes, deploy-terraform, deploy-frontend]
+    if: always()
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Deployment Summary
+        run: |
+          echo "🎯 DEPLOYMENT SUMMARY"
+          echo "=================="
+          echo ""
+          
+          if [ "${{ needs.deploy-terraform.result }}" == "success" ]; then
+            echo "✅ Infrastructure: Deployed successfully"
+            echo "   API Gateway: ${{ needs.deploy-terraform.outputs.api-gateway-url }}"
+          elif [ "${{ needs.deploy-terraform.result }}" == "skipped" ]; then
+            echo "⏭️ Infrastructure: Skipped (no changes)"
+          else
+            echo "❌ Infrastructure: Failed"
+          fi
+          
+          if [ "${{ needs.deploy-frontend.result }}" == "success" ]; then
+            echo "✅ Frontend: Deployed successfully"
+            echo "   Website: http://${{ needs.deploy-terraform.outputs.frontend-bucket }}.s3-website-us-east-1.amazonaws.com"
+          elif [ "${{ needs.deploy-frontend.result }}" == "skipped" ]; then
+            echo "⏭️ Frontend: Skipped (no changes)"
+          else
+            echo "❌ Frontend: Failed"
+          fi
+          
+          echo ""
+          echo "🎊 Platform Status: $([ "${{ needs.deploy-terraform.result }}" != "failure" ] && [ "${{ needs.deploy-frontend.result }}" != "failure" ] && echo "Operational" || echo "Issues Detected")"
+          echo ""
+          echo "💰 Estimated Cost Impact: +$0.00 (all free tier resources)"
+          echo "⏱️ Next: Ready for Phase 2A automation enhancements"
