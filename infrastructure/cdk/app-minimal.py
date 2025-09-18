@@ -40,6 +40,22 @@ class CostOptimizationMinimalStack(Stack):
         # Create API Gateway Lambda function
         self.api_gateway_lambda = self._create_api_gateway_lambda()
         
+        # Add Cost Explorer permissions to API Gateway Lambda
+        self.api_gateway_lambda.add_to_role_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "ce:GetCostAndUsage",
+                    "ce:GetDimensionValues",
+                    "ce:GetReservationCoverage",
+                    "ce:GetReservationPurchaseRecommendation",
+                    "ce:GetReservationUtilization",
+                    "ce:GetUsageReport"
+                ],
+                resources=["*"]
+            )
+        )
+        
         # Create API Gateway (1M requests free)
         self.api_gateway = self._create_api_gateway()
         

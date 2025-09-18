@@ -8,11 +8,11 @@ on:
   workflow_dispatch:  # Allow manual trigger
 
 env:
-  AWS_REGION: us-east-1
-  ECR_REGISTRY: 703758695872.dkr.ecr.us-east-1.amazonaws.com
-  BACKEND_REPOSITORY: cost-optimization-backend
-  FRONTEND_REPOSITORY: cost-optimization-frontend
-  DATABASE_REPOSITORY: cost-optimization-database
+  REGISTRY: ghcr.io
+  GITHUB_REPOSITORY: ${{ github.repository }}
+  BACKEND_IMAGE: ghcr.io/${{ github.repository }}/cost-optimization-backend
+  FRONTEND_IMAGE: ghcr.io/${{ github.repository }}/cost-optimization-frontend
+  DATABASE_IMAGE: ghcr.io/${{ github.repository }}/cost-optimization-database
 
 jobs:
   build-and-push:
@@ -22,48 +22,48 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
       with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
-
-    - name: Login to Amazon ECR
-      id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v2
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Build and push backend image
       run: |
         cd backend
-        docker build -t $ECR_REGISTRY/$BACKEND_REPOSITORY:$GITHUB_SHA .
-        docker tag $ECR_REGISTRY/$BACKEND_REPOSITORY:$GITHUB_SHA $ECR_REGISTRY/$BACKEND_REPOSITORY:latest
-        docker push $ECR_REGISTRY/$BACKEND_REPOSITORY:$GITHUB_SHA
-        docker push $ECR_REGISTRY/$BACKEND_REPOSITORY:latest
-        echo "Backend image pushed successfully"
+        docker build -t $BACKEND_IMAGE:$GITHUB_SHA .
+        docker tag $BACKEND_IMAGE:$GITHUB_SHA $BACKEND_IMAGE:latest
+        docker push $BACKEND_IMAGE:$GITHUB_SHA
+        docker push $BACKEND_IMAGE:latest
+        echo "Backend image pushed to GitHub Container Registry successfully"
 
     - name: Build and push frontend image
       run: |
         cd frontend/cost-dashboard
-        docker build -t $ECR_REGISTRY/$FRONTEND_REPOSITORY:$GITHUB_SHA .
-        docker tag $ECR_REGISTRY/$FRONTEND_REPOSITORY:$GITHUB_SHA $ECR_REGISTRY/$FRONTEND_REPOSITORY:latest
-        docker push $ECR_REGISTRY/$FRONTEND_REPOSITORY:$GITHUB_SHA
-        docker push $ECR_REGISTRY/$FRONTEND_REPOSITORY:latest
-        echo "Frontend image pushed successfully"
+        docker build -t $FRONTEND_IMAGE:$GITHUB_SHA .
+        docker tag $FRONTEND_IMAGE:$GITHUB_SHA $FRONTEND_IMAGE:latest
+        docker push $FRONTEND_IMAGE:$GITHUB_SHA
+        docker push $FRONTEND_IMAGE:latest
+        echo "Frontend image pushed to GitHub Container Registry successfully"
 
     - name: Build and push database image
       run: |
         cd database
-        docker build -t $ECR_REGISTRY/$DATABASE_REPOSITORY:$GITHUB_SHA .
-        docker tag $ECR_REGISTRY/$DATABASE_REPOSITORY:$GITHUB_SHA $ECR_REGISTRY/$DATABASE_REPOSITORY:latest
-        docker push $ECR_REGISTRY/$DATABASE_REPOSITORY:$GITHUB_SHA
-        docker push $ECR_REGISTRY/$DATABASE_REPOSITORY:latest
-        echo "Database image pushed successfully"
+        docker build -t $DATABASE_IMAGE:$GITHUB_SHA .
+        docker tag $DATABASE_IMAGE:$GITHUB_SHA $DATABASE_IMAGE:latest
+        docker push $DATABASE_IMAGE:$GITHUB_SHA
+        docker push $DATABASE_IMAGE:latest
+        echo "Database image pushed to GitHub Container Registry successfully"
 
     - name: Output image URIs
       run: |
-        echo "✅ All images built and pushed successfully!"
-        echo "Backend: $ECR_REGISTRY/$BACKEND_REPOSITORY:latest"
-        echo "Frontend: $ECR_REGISTRY/$FRONTEND_REPOSITORY:latest"
-        echo "Database: $ECR_REGISTRY/$DATABASE_REPOSITORY:latest"
-# Trigger workflow with fixed AWS credentials
+        echo "✅ All images built and pushed successfully to GitHub Container Registry!"
+        echo "Backend: $BACKEND_IMAGE:latest"
+        echo "Frontend: $FRONTEND_IMAGE:latest"
+        echo "Database: $DATABASE_IMAGE:latest"
+        echo ""
+        echo "🌐 Images are publicly available at:"
+        echo "https://github.com/${{ github.repository }}/pkgs/container/cost-optimization-backend"
+        echo "https://github.com/${{ github.repository }}/pkgs/container/cost-optimization-frontend"
+        echo "https://github.com/${{ github.repository }}/pkgs/container/cost-optimization-database"

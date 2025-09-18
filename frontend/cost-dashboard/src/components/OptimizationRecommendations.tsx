@@ -71,7 +71,10 @@ const OptimizationRecommendations: React.FC<OptimizationRecommendationsProps> = 
 
   const getTotalSavings = () => {
     return recommendations.reduce((total, rec) => {
-      const savings = parseFloat(rec.potential_savings.replace('$', '').replace(',', ''));
+      // Handle both string and number formats
+      const savings = typeof rec.potential_savings === 'string' 
+        ? parseFloat(rec.potential_savings.replace('$', '').replace(',', ''))
+        : rec.potential_savings;
       return total + savings;
     }, 0);
   };
