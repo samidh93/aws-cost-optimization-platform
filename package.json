@@ -5,18 +5,17 @@
   "main": "index.js",
   "scripts": {
     "setup": "./scripts/setup.sh",
-    "deploy": "./scripts/deploy.sh",
-    "cleanup": "./scripts/cleanup.sh",
     "test": "pytest tests/",
     "lint": "black backend/ && flake8 backend/",
-    "cdk:deploy": "cd infrastructure/cdk && cdk deploy --all",
-    "cdk:destroy": "cd infrastructure/cdk && cdk destroy --all",
+    "terraform:init": "cd infrastructure/terraform && terraform init",
     "terraform:plan": "cd infrastructure/terraform && terraform plan",
     "terraform:apply": "cd infrastructure/terraform && terraform apply",
     "terraform:destroy": "cd infrastructure/terraform && terraform destroy",
-    "k8s:deploy": "kubectl apply -f kubernetes/",
-    "k8s:delete": "kubectl delete -f kubernetes/",
-    "ansible:playbook": "ansible-playbook -i infrastructure/ansible/inventory infrastructure/ansible/site.yml"
+    "terraform:deploy": "cd infrastructure/terraform && ./deploy.sh deploy",
+    "cloudformation:deploy": "cd infrastructure/cloudformation && ./deploy.sh deploy",
+    "cloudformation:delete": "cd infrastructure/cloudformation && ./deploy.sh delete",
+    "frontend:build": "cd frontend/cost-dashboard && npm run build",
+    "frontend:deploy": "cd frontend/cost-dashboard && npm run build && aws s3 sync build/ s3://cost-optimization-frontend-703758695872-prod/ --delete"
   },
   "keywords": [
     "aws",
